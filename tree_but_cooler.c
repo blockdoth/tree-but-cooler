@@ -5,9 +5,45 @@
 #include <string.h>
 #include <stdlib.h>
 
+// Ansi codes
+#define RED "\033[91m"
+#define ORANGE "\033[38;5;208m"
+#define GREEN "\033[92m"
+#define YELLOW "\033[93m"
+#define BLUE "\033[94m"
+#define PURPLE "\033[95m"
+#define CYAN "\033[96m"
+#define WHITE "\033[37m"
+#define RESET "\033[0m"
 
+// Colors list
+const char* colors[] = {
+        RED,
+        ORANGE,
+        YELLOW,
+        GREEN,
+        CYAN,
+        BLUE,
+        PURPLE
+};
+const size_t colorsLength = sizeof(colors) / sizeof(colors[0]);
+size_t colorPointer = 0;
+
+// Pipes
+#define STRAIGHT " │  "
+#define LCORNER " └─ "
+#define TSPLIT " ├─ "
+#define EMPTY "    "
+
+// Typedefs
 typedef struct dirent* Dirent;
 typedef struct stat Stat;
+
+
+//Global flags
+int includeFiles = 0;
+int gayMode = 0;
+
 
 // === Tree ===
 typedef struct DirNode {
@@ -90,7 +126,7 @@ char* getDirNameFromPath(char* path){
 }
 
 // === Tree Builder ===
-DirNode *buildDirTree(char* filePath, int8_t includeFiles) {
+DirNode *buildDirTree(char* filePath) {
     // Traverses the dir tree dir by dir, using a stack rather then recursion
     char* dirName = getDirNameFromPath(filePath);
     // Add the root node to the tree
@@ -144,54 +180,85 @@ void freeDirTree(DirNode *rootNode) {
 }
 
 
-
 char* toString(DirNode* rootNode, size_t depth, char* prefix) {
+    // Decide color for this branch
+    const char* color;
+    if(gayMode){
+        color = colors[colorPointer++];
+        if(colorPointer > colorsLength - 1){
+            colorPointer = 0;
+        }
+    }else{
+        color = WHITE;
+    }
+    size_t ansiLength = strlen(color) + strlen(RESET);
+    size_t prefixLength = ansiLength + 9; // Not sure why its 9, maybe because "└"and "├" encode to multiple chars
     // Builds dirname
-    char* structure = (char*)malloc(sizeof(char*) * (strlen(rootNode->fileName) + 2));
-    strcpy(structure, rootNode->fileName);
-    strcat(structure, "\n");
+    char* structure = (char*)malloc(strlen(rootNode->fileName) + ansiLength + 3);
+    sprintf(structure,"%s%s%s\n", color, rootNode->fileName,  RESET);
 
     DirNode* childNode = rootNode->childNodes;
     while(childNode != NULL){
-        char* childPrefix = (char*)malloc(sizeof(char*) * (strlen(prefix) + 4)); // Make a copy for concat's
-        strcpy(childPrefix, prefix);
-
+        char* pipeString =  (char*)malloc(prefixLength);
+        char* prefixPipeString =  (char*)malloc(prefixLength);
         if(childNode->nextNode == NULL){ // Last item in the list
-            strcat(structure, prefix);
-            strcat(structure, " └─ ");
-            strcat(childPrefix, "   ");
+            sprintf(pipeString,         "%s%s%s", color, LCORNER ,  RESET);
+            sprintf(prefixPipeString, "%s%s%s", color, EMPTY , RESET);
         }else{
-            strcat(structure, prefix);
-            strcat(structure, " ├─ ");
-            strcat(childPrefix, " │ ");
+            sprintf(pipeString,         "%s%s%s", color, TSPLIT,  RESET);
+            sprintf(prefixPipeString,   "%s%s%s", color, STRAIGHT ,  RESET);
         }
+
+        char* childPrefix = (char*)malloc( strlen(prefix) + strlen(prefixPipeString) + 1); // Make a copy for concat's
+        sprintf(childPrefix, "%s%s", prefix, prefixPipeString);
+
         // Build the tree of the child dir
         char* childStructure = toString(childNode, depth + 1, childPrefix);
         // Merges the current tree of the current structure with the tree's of the child structures
-        structure = (char*)realloc(structure, sizeof(char*) * (strlen(structure) + strlen(childStructure) + 1));
-        strcat(structure, childStructure);
 
+        structure = (char*)realloc(structure, strlen(structure) + strlen(prefix) + strlen(pipeString) + strlen(childStructure) + 1);
+        strcat(structure,prefix);
+        strcat(structure,pipeString);
+        strcat(structure,childStructure);
+
+        free(pipeString);
+        free(prefixPipeString);
         free(childPrefix);
         free(childStructure);
         childNode = childNode->nextNode;
     }
+
     return structure;
 }
 
 
+
 int main(int argc, char *argv[]) {
-    // Check if there are at least two arguments (including the program name)
-    if (argc > 2) {
-        printf("Usage: %s (-f) includes files )\n", argv[0]);
-        return 1;  // Return with an error code
-    }
-    // Check if files should be included
-    int8_t includeFiles = 0;
-    if(argc == 2){
-        if(*argv[1] == '-' && *(++argv[1]) == 'f'){
-            includeFiles = 1;
+
+    // Parsing args
+    for (int i = 1; i < argc; i++) {
+        char* arg = argv[i];
+        if(*arg == '-'){
+            if(*(++arg) == '-'){ // Multi char arg, ex "--gay"
+                ++arg;
+                if (strcmp(arg, "gay") == 0) {
+                    gayMode = 1;
+                } else if (strcmp(arg, "todo") == 0) {
+
+                }
+            }else{ // Single char arg, ex "-f"
+                switch (*arg) {
+                    case 'f':
+                        includeFiles = 1;
+                        break;
+                    default:
+                }
+            }
+        }else{
+            printf("Usage: %s -f or --gay\n", argv[0]);
         }
     }
+
     // Get current working dir
     char currentDirPath[1024];
     if (getcwd(currentDirPath, sizeof(currentDirPath)) == NULL) {
@@ -200,8 +267,9 @@ int main(int argc, char *argv[]) {
     }
     printf("Current working directory: %s\n", currentDirPath);
 
+    //"/mnt/c/Users/pepij/CLionProjects"
     // Building the tree datastructure
-    DirNode* rootNode = buildDirTree("/mnt/c/Users/pepij/CLionProjects", includeFiles);
+    DirNode* rootNode = buildDirTree(currentDirPath);
 
     // Visualizing it
     char* structure = toString(rootNode, 0, "");
