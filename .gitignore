@@ -2,5 +2,6 @@
 .envrc
 .direnv/
 
+./result/
 ./tree_but_cooler
  
