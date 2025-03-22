@@ -1,1 +1,6 @@
-tree_but_cooler
+.idea
+.envrc
+.direnv/
+
+./tree_but_cooler
+ 
